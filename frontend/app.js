@@ -1,45 +1,463 @@
-const API='/api';
-let token=localStorage.getItem('soul_token')||'';
-let me=JSON.parse(localStorage.getItem('soul_user')||'null');
-let cart=JSON.parse(localStorage.getItem('soul_cart')||'[]');
+ const API = '/api';
+let token = localStorage.getItem('soul_token') || '';
+let me = JSON.parse(localStorage.getItem('soul_user') || 'null');
+let cart = JSON.parse(localStorage.getItem('soul_cart') || '[]');
 
-const money=n=>'TSh '+Number(n||0).toLocaleString('en-TZ');
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-async function api(path,opts={}){opts.headers={'Content-Type':'application/json',...(opts.headers||{})};if(token)opts.headers.Authorization='Bearer '+token;const r=await fetch(API+path,opts);const d=await r.json();if(!r.ok)throw Error(d.error||'Hitilafu');return d}
-function toast(s){const x=document.createElement('div');x.className='toast';x.textContent=s;document.body.appendChild(x);setTimeout(()=>x.remove(),2500)}
-function save(){localStorage.setItem('soul_cart',JSON.stringify(cart));document.getElementById('cartCount').textContent=cart.reduce((a,b)=>a+b.quantity,0)}
-function logout(){token='';me=null;localStorage.clear();show('home');toast('Umetoka kwenye akaunti')}
-function productCard(p){return `<div class="card"><div class="pic">📱</div><div class="body"><span class="badge">${p.verified?'✓ SOUL Verified':'Muuzaji'}</span><h3>${esc(p.name)}</h3><div class="price">${money(p.price)}</div><div class="muted">⭐ ${p.rating||'Mpya'} · ${esc(p.store_name||p.seller_name)}</div><div class="muted">Stock: ${p.stock}</div><div class="actions"><button onclick="addCart(${p.id})">🛒 Kikapu</button><button class="primary" onclick="details(${p.id})">Angalia</button></div></div></div>`}
-async function home(){let d=await api('/products');return `<section class="hero"><div><h1>Nunua kwa kujiamini. Uza kwa SOUL.</h1><p>Gundua electronics na technology products kutoka kwa wauzaji wa Tanzania. Jenga duka lako, pokea oda na simamia biashara yako sehemu moja.</p><button class="primary" onclick="show('shop')">Anza Kununua</button><button class="primary" onclick="show('seller')">Uza kwenye SOUL</button></div><div style="font-size:120px;align-self:center">🛍️</div></section><section class="section"><h2>Makundi Maarufu</h2><div class="cats">${['Simu','Kompyuta','Audio','Smartwatches','Gaming','Chargers','Power Banks'].map(c=>`<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}</div></section><section class="section"><h2>Bidhaa Zinazopendwa</h2><div class="grid">${d.products.slice(0,8).map(productCard).join('')||'<div class="empty">Bado hakuna bidhaa. Muuzaji wa kwanza anaweza kuwa wewe.</div>'}</div></section>`}
-async function shop(q='',cat=''){let d=await api('/products?'+new URLSearchParams({q,category:cat}));return `<section class="section"><h1>Nunua</h1><div class="cats"><button class="cat" onclick="shopCat('')">Zote</button>${['Simu','Kompyuta','Audio','Smartwatches','Gaming','Chargers','Power Banks'].map(c=>`<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}</div><br><div class="grid">${d.products.map(productCard).join('')||'<div class="empty">Hakuna bidhaa zilizopatikana.</div>'}</div></section>`}
-async function details(id){let d=await api('/products/'+id),p=d.product;document.getElementById('app').innerHTML=`<section class="panel"><button onclick="show('shop')">← Rudi</button><div class="hero" style="margin:20px 0"><div><span class="badge">${p.verified?'✓ SOUL Verified':'Muuzaji'}</span><h1>${esc(p.name)}</h1><h2>${money(p.price)}</h2><p>${esc(p.description||'Bidhaa bora kutoka SOUL.')}</p><p>Muuzaji: <b>${esc(p.store_name||p.seller_name)}</b> · ⭐ ${p.rating||'Mpya'}</p><button class="primary" onclick="addCart(${p.id})">Ongeza kwenye Kikapu</button></div><div style="font-size:150px">📦</div></div><h2>Maoni</h2>${d.reviews.map(r=>`<p>⭐ ${r.rating}/5 — ${esc(r.comment)} <span class="muted">(${esc(r.buyer_name)})</span></p>`).join('')||'<p class="muted">Bado hakuna maoni.</p>'}</section>`}
-function addCart(id){let x=cart.find(a=>a.product_id===id);if(x)x.quantity++;else cart.push({product_id:id,quantity:1});save();toast('Bidhaa imeongezwa kwenye kikapu')}
-async function cartPage(){let rows=[];for(const x of cart){try{let d=await api('/products/'+x.product_id);rows.push({...x,p:d.product})}catch{}}let total=rows.reduce((a,x)=>a+x.p.price*x.quantity,0);return `<section class="section"><h1>Kikapu</h1>${rows.map(x=>`<div class="panel"><b>${esc(x.p.name)}</b><span style="float:right">${money(x.p.price*x.quantity)}</span><p>Idadi: ${x.quantity}</p><button onclick="removeCart(${x.product_id})">Ondoa</button></div>`).join('')||'<div class="empty">Kikapu kiko wazi.</div>'}<div class="panel"><h2>Jumla: ${money(total)}</h2><button class="primary" onclick="checkout()">Endelea Kulipa</button></div></section>`}
-function removeCart(id){cart=cart.filter(x=>x.product_id!==id);save();show('cart')}
-async function checkout(){if(!me)return show('login');if(me.role!=='BUYER')return toast('Ingia kama mnunuzi');let address=prompt('Weka anwani ya delivery:');if(!address)return;try{let o=await api('/orders',{method:'POST',body:JSON.stringify({items:cart,delivery_address:address})});cart=[];save();toast('Oda #'+o.order.id+' imewekwa');show('orders')}catch(e){toast(e.message)}}
-async function loginPage(){document.getElementById('app').innerHTML=`<div class="panel form"><h1>Ingia SOUL</h1><input id="email" placeholder="Barua pepe"><input id="pass" type="password" placeholder="Password"><button class="primary" onclick="login()">Ingia</button><hr><p>Huna akaunti? <button onclick="show('register')">Jisajili</button></p></div>`}
-async function login(){try{let d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('pass').value})});token=d.token;me=d.user;localStorage.setItem('soul_token',token);localStorage.setItem('soul_user',JSON.stringify(me));toast('Karibu '+me.name);show(me.role==='ADMIN'?'admin':me.role==='SELLER'?'sellerdash':'account')}catch(e){toast(e.message)}}
-function registerPage(){document.getElementById('app').innerHTML=`<div class="panel form"><h1>Jisajili</h1><input id="reg_name" placeholder="Jina kamili"><input id="reg_email" placeholder="Barua pepe"><input id="reg_phone" placeholder="Namba ya simu"><input id="reg_pass" type="password" placeholder="Password"><select id="reg_rtype"><option value="BUYER">Mnunuzi</option><option value="SELLER">Muuzaji</option></select><input id="reg_store" placeholder="Jina la duka (kwa muuzaji)"><button class="primary" onclick="register()">Fungua akaunti</button></div>`}
-async function register(){try{let d=await api('/auth/register',{method:'POST',body:JSON.stringify({ name:document.getElementById('reg_name').value.trim(),
-email:document.getElementById('reg_email').value.trim(),
-phone:document.getElementById('reg_phone').value.trim(),
-password:document.getElementById('reg_pass').value,
-role:document.getElementById('reg_rtype').value,
-storeName:document.getElementById('reg_store').value.trim() })});token=d.token;me=d.user;localStorage.setItem('soul_token',token);localStorage.setItem('soul_user',JSON.stringify(me));toast('Akaunti imefunguliwa');show(me.role==='SELLER'?'sellerdash':'account')}catch(e){toast(e.message)}}
-async function orders(){if(!me)return loginPage();let d=await api('/orders');document.getElementById('app').innerHTML=`<section class="section"><h1>Oda Zangu</h1>${d.orders.map(o=>`<div class="panel"><b>Oda #SO${o.id}</b><span style="float:right">${money(o.total)}</span><p>Status: <span class="badge">${o.status}</span></p><p>${esc(o.delivery_address||'')}</p></div>`).join('')||'<div class="empty">Bado huna oda.</div>'}</section>`}
-function account(){document.getElementById('app').innerHTML=`<section class="section"><div class="panel"><h1>Karibu, ${esc(me.name)}</h1><p>${esc(me.email)} · ${me.role}</p><button class="primary" onclick="show('orders')">Oda Zangu</button> <button onclick="logout()">Toka</button></div></section>`}
-async function sellerDash(){if(!me)return loginPage();let d=await api('/seller/products');document.getElementById('app').innerHTML=`<section class="dash"><aside class="side"><h2>SOUL Seller</h2><button onclick="show('sellerdash')">Muhtasari</button><button onclick="addProductPage()">➕ Ongeza Bidhaa</button><button onclick="sellerProducts()">Bidhaa</button><button onclick="show('orders')">Oda</button><button onclick="verifyPage()">✓ SOUL Verified</button><button onclick="logout()">Toka</button></aside><div class="content"><h1>Dashibodi ya Muuzaji</h1><div class="stats"><div class="stat">Bidhaa<b>${d.products.length}</b></div><div class="stat">Duka<b>SOUL Store</b></div><div class="stat">Status<b>Inafanya kazi</b></div></div><h2>Bidhaa zako</h2><div class="grid">${d.products.slice(0,6).map(productCard).join('')||'<div class="empty">Ongeza bidhaa yako ya kwanza.</div>'}</div></div></section>`}
-async function sellerProducts(){let d=await api('/seller/products');document.getElementById('app').innerHTML=`<section class="section"><h1>Bidhaa Zangu</h1><button class="primary" onclick="addProductPage()">➕ Ongeza Bidhaa</button><div class="grid" style="margin-top:20px">${d.products.map(productCard).join('')}</div></section>`}
-function addProductPage(){document.getElementById('app').innerHTML=`<div class="panel form"><h1>Ongeza Bidhaa</h1><input id="pn" placeholder="Jina la bidhaa"><select id="pc"><option>Simu</option><option>Kompyuta</option><option>Audio</option><option>Smartwatches</option><option>Gaming</option><option>Chargers</option><option>Power Banks</option></select><textarea id="pd" placeholder="Maelezo"></textarea><input id="pp" type="number" placeholder="Bei TSh"><input id="ps" type="number" placeholder="Stock"><input id="pi" placeholder="URL ya picha (optional)"><button class="primary" onclick="addProduct()">Hifadhi Bidhaa</button></div>`}
-async function addProduct(){try{await api('/products',{method:'POST',body:JSON.stringify({name:document.getElementById('pn').value,category:document.getElementById('pc').value,description:document.getElementById('pd').value,price:document.getElementById('pp').value,stock:document.getElementById('ps').value,image_url:document.getElementById('pi').value})});toast('Bidhaa imeongezwa');show('sellerdash')}catch(e){toast(e.message)}}
-function verifyPage(){document.getElementById('app').innerHTML=`<div class="panel form"><h1>✓ SOUL Verified</h1><p>Tuma ombi la kuhakikiwa kama muuzaji.</p><input id="bn" placeholder="Jina la biashara"><button class="primary" onclick="verify()">Tuma Ombi</button></div>`}
-async function verify(){try{await api('/seller/verify',{method:'POST',body:JSON.stringify({business_name:document.getElementById('bn').value})});toast('Ombi limetumwa');show('sellerdash')}catch(e){toast(e.message)}}
-async function admin(){let s=await api('/admin/stats');document.getElementById('app').innerHTML=`<section class="dash"><aside class="side"><h2>SOUL CONTROL TOWER</h2><button onclick="show('admin')">📊 Muhtasari</button><button onclick="adminSellers()">🏪 Wauzaji</button><button onclick="show('orders')">📦 Oda</button><button onclick="adminDisputes()">⚠️ Migogoro</button><button onclick="logout()">Toka</button></aside><div class="content"><h1>Admin Control Tower</h1><div class="stats">${[['Watumiaji',s.stats.users],['Wanunuzi',s.stats.buyers],['Wauzaji',s.stats.sellers],['Bidhaa',s.stats.products],['Oda',s.stats.orders],['GMV',money(s.stats.gmv)],['Migogoro',s.stats.disputes],['Uhakiki',s.stats.verifications]].map(x=>`<div class="stat">${x[0]}<b>${x[1]}</b></div>`).join('')}</div><div class="panel"><h2>SOUL Admin</h2><p>Hii ni Control Tower ya kusimamia marketplace.</p></div></div></section>`}
-async function adminSellers(){let d=await api('/admin/sellers');document.getElementById('app').innerHTML=`<section class="section"><h1>Wauzaji</h1><table><tr><th>Duka</th><th>Muuzaji</th><th>Hali</th><th>Kitendo</th></tr>${d.sellers.map(s=>`<tr><td>${esc(s.store_name||'-')}</td><td>${esc(s.name)}</td><td>${s.verified?'✓ Verified':'Inasubiri'}</td><td>${s.verified?'—':`<button onclick="approve(${s.id})">Thibitisha</button>`}</td></tr>`).join('')}</table></section>`}
-async function approve(id){await api('/admin/sellers/'+id+'/verify',{method:'POST'});toast('Muuzaji amethibitishwa');adminSellers()}
-async function adminDisputes(){let d=await api('/admin/disputes');document.getElementById('app').innerHTML=`<section class="section"><h1>Migogoro</h1>${d.disputes.map(x=>`<div class="panel"><b>Oda #${x.order_id}</b><p>${esc(x.reason)}</p><span class="badge">${x.status}</span></div>`).join('')||'<div class="empty">Hakuna migogoro.</div>'}</section>`}
-function seller(){document.getElementById('app').innerHTML=`<section class="hero"><div><h1>Geuza biashara yako kuwa duka la kidigitali.</h1><p>Fungua SOUL Store, ongeza bidhaa, pokea oda na simamia mauzo yako.</p><button class="primary" onclick="show('register')">Jisajili kama Muuzaji</button></div><div style="font-size:110px">🏪</div></section>`}
-async function searchProducts(){document.getElementById('app').innerHTML=await shop(document.getElementById('search').value)}
-async function shopCat(c){document.getElementById('app').innerHTML=await shop('',c)}
-async function show(page){try{let html=page==='home'?await home():page==='shop'?await shop():page==='cart'?await cartPage():page==='login'?await loginPage():page==='register'?registerPage():page==='seller'?seller():page==='orders'?await orders():page==='account'?account():page==='sellerdash'?await sellerDash():page==='admin'?await admin():'<div class="empty">Ukurasa haujapatikana.</div>';if(html!==undefined)document.getElementById('app').innerHTML=html}catch(e){toast(e.message)}save()}
-show('home');save();
+const money = n => 'TSh ' + Number(n || 0).toLocaleString('en-TZ');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+async function api(path, opts = {}) {
+  opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) opts.headers.Authorization = 'Bearer ' + token;
+  const r = await fetch(API + path, opts);
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error || d.message || 'Hitilafu imetokea');
+  return d;
+}
+
+function toast(s) {
+  const x = document.createElement('div');
+  x.className = 'toast';
+  x.textContent = s;
+  document.body.appendChild(x);
+  setTimeout(() => x.remove(), 2500);
+}
+
+function save() {
+  localStorage.setItem('soul_cart', JSON.stringify(cart));
+  const el = document.getElementById('cartCount');
+  if (el) el.textContent = cart.reduce((a, b) => a + b.quantity, 0);
+}
+
+function logout() {
+  token = '';
+  me = null;
+  localStorage.clear();
+  show('home');
+  toast('Umetoka kwenye akaunti');
+}
+
+function productCard(p) {
+  return `<div class="card">
+    <div class="pic">📱</div>
+    <div class="body">
+      <span class="badge">${p.verified ? '✓ SOUL Verified' : 'Muuzaji'}</span>
+      <h3>${esc(p.name)}</h3>
+      <div class="price">${money(p.price)}</div>
+      <div class="muted">⭐ ${p.rating || 'Mpya'} · ${esc(p.store_name || p.seller_name)}</div>
+      <div class="muted">Stock: ${p.stock}</div>
+      <div class="actions">
+        <button onclick="addCart(${p.id})">🛒 Kikapu</button>
+        <button class="primary" onclick="details(${p.id})">Angalia</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function home() {
+  let d = await api('/products');
+  return `<section class="hero">
+    <div>
+      <h1>Nunua kwa kujiamini. Uza kwa SOUL.</h1>
+      <p>Gundua electronics na technology products kutoka kwa wauzaji wa Tanzania. Jenga duka lako, pokea oda na simamia biashara yako sehemu moja.</p>
+      <button class="primary" onclick="show('shop')">Anza Kununua</button>
+      <button class="primary" onclick="show('seller')">Uza kwenye SOUL</button>
+    </div>
+    <div style="font-size:120px;align-self:center">🛍️</div>
+  </section>
+  <section class="section">
+    <h2>Makundi Maarufu</h2>
+    <div class="cats">${['Simu', 'Kompyuta', 'Audio', 'Smartwatches', 'Gaming', 'Chargers', 'Power Banks'].map(c => `<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}</div>
+  </section>
+  <section class="section">
+    <h2>Bidhaa Zinazopendwa</h2>
+    <div class="grid">${d.products.slice(0, 8).map(productCard).join('') || '<div class="empty">Bado hakuna bidhaa. Muuzaji wa kwanza anaweza kuwa wewe.</div>'}</div>
+  </section>`;
+}
+
+async function shop(q = '', cat = '') {
+  let d = await api('/products?' + new URLSearchParams({ q, category: cat }));
+  return `<section class="section">
+    <h1>Nunua</h1>
+    <div class="cats">
+      <button class="cat" onclick="shopCat('')">Zote</button>
+      ${['Simu', 'Kompyuta', 'Audio', 'Smartwatches', 'Gaming', 'Chargers', 'Power Banks'].map(c => `<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}
+    </div><br>
+    <div class="grid">${d.products.map(productCard).join('') || '<div class="empty">Hakuna bidhaa zilizopatikana.</div>'}</div>
+  </section>`;
+}
+
+async function details(id) {
+  let d = await api('/products/' + id), p = d.product;
+  document.getElementById('app').innerHTML = `<section class="panel">
+    <button onclick="show('shop')">← Rudi</button>
+    <div class="hero" style="margin:20px 0">
+      <div>
+        <span class="badge">${p.verified ? '✓ SOUL Verified' : 'Muuzaji'}</span>
+        <h1>${esc(p.name)}</h1>
+        <h2>${money(p.price)}</h2>
+        <p>${esc(p.description || 'Bidhaa bora kutoka SOUL.')}</p>
+        <p>Muuzaji: <b>${esc(p.store_name || p.seller_name)}</b> · ⭐ ${p.rating || 'Mpya'}</p>
+        <button class="primary" onclick="addCart(${p.id})">Ongeza kwenye Kikapu</button>
+      </div>
+      <div style="font-size:150px">📦</div>
+    </div>
+    <h2>Maoni</h2>
+    ${d.reviews.map(r => `<p>⭐ ${r.rating}/5 — ${esc(r.comment)} <span class="muted">(${esc(r.buyer_name)})</span></p>`).join('') || '<p class="muted">Bado hakuna maoni.</p>'}
+  </section>`;
+}
+
+function addCart(id) {
+  let x = cart.find(a => a.product_id === id);
+  if (x) x.quantity++;
+  else cart.push({ product_id: id, quantity: 1 });
+  save();
+  toast('Bidhaa imeongezwa kwenye kikapu');
+}
+
+async function cartPage() {
+  let rows = [];
+  for (const x of cart) {
+    try {
+      let d = await api('/products/' + x.product_id);
+      rows.push({ ...x, p: d.product });
+    } catch {}
+  }
+  let total = rows.reduce((a, x) => a + x.p.price * x.quantity, 0);
+  return `<section class="section">
+    <h1>Kikapu</h1>
+    ${rows.map(x => `<div class="panel">
+      <b>${esc(x.p.name)}</b>
+      <span style="float:right">${money(x.p.price * x.quantity)}</span>
+      <p>Idadi: ${x.quantity}</p>
+      <button onclick="removeCart(${x.product_id})">Ondoa</button>
+    </div>`).join('') || '<div class="empty">Kikapu kiko wazi.</div>'}
+    <div class="panel">
+      <h2>Jumla: ${money(total)}</h2>
+      <button class="primary" onclick="checkout()">Endelea Kulipa</button>
+    </div>
+  </section>`;
+}
+
+function removeCart(id) {
+  cart = cart.filter(x => x.product_id !== id);
+  save();
+  show('cart');
+}
+
+async function checkout() {
+  if (!me) return show('login');
+  if (me.role !== 'BUYER') return toast('Ingia kama mnunuzi');
+  let address = prompt('Weka anwani ya delivery:');
+  if (!address) return;
+  try {
+    let o = await api('/orders', { method: 'POST', body: JSON.stringify({ items: cart, delivery_address: address }) });
+    cart = [];
+    save();
+    toast('Oda #' + o.order.id + ' imewekwa');
+    show('orders');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function loginPage() {
+  document.getElementById('app').innerHTML = `<div class="panel form">
+    <h1>Ingia SOUL</h1>
+    <input id="email" type="email" placeholder="Barua pepe">
+    <input id="pass" type="password" placeholder="Password">
+    <button class="primary" onclick="login()">Ingia</button>
+    <hr>
+    <p>Huna akaunti? <button onclick="show('register')">Jisajili</button></p>
+  </div>`;
+}
+
+async function login() {
+  const emailEl = document.getElementById('email');
+  const passEl = document.getElementById('pass');
+  if (!emailEl.value || !passEl.value) return toast('Jaza email na password!');
+  
+  try {
+    let d = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: emailEl.value.trim(), password: passEl.value })
+    });
+    token = d.token;
+    me = d.user;
+    localStorage.setItem('soul_token', token);
+    localStorage.setItem('soul_user', JSON.stringify(me));
+    toast('Karibu ' + me.name);
+    show(me.role === 'ADMIN' ? 'admin' : me.role === 'SELLER' ? 'sellerdash' : 'account');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function registerPage() {
+  document.getElementById('app').innerHTML = `<div class="panel form">
+    <h1>Jisajili SOUL</h1>
+    <input id="name" placeholder="Jina kamili">
+    <input id="email" type="email" placeholder="Barua pepe (Mfano: info@soul.com)">
+    <input id="phone" placeholder="Namba ya simu (Mfano: 0712345678)">
+    <input id="pass" type="password" placeholder="Password (Angalau vibambo 6)">
+    <select id="rtype" onchange="document.getElementById('storeField').style.display = this.value==='SELLER'?'block':'none'">
+      <option value="BUYER">Mnunuzi</option>
+      <option value="SELLER">Muuzaji</option>
+    </select>
+    <div id="storeField" style="display:none">
+      <input id="store" placeholder="Jina la duka (kwa muuzaji)">
+    </div>
+    <button class="primary" onclick="register()">Fungua akaunti</button>
+  </div>`;
+}
+
+async function register() {
+  const nameEl = document.getElementById('name');
+  const emailEl = document.getElementById('email');
+  const phoneEl = document.getElementById('phone');
+  const passEl = document.getElementById('pass');
+  const rtypeEl = document.getElementById('rtype');
+  const storeEl = document.getElementById('store');
+
+  if (!nameEl.value || !emailEl.value || !phoneEl.value || !passEl.value) {
+    return toast('Tafadhali jaza sehemu zote zinazotakiwa!');
+  }
+
+  if (passEl.value.length < 6) {
+    return toast('Password lazima iwe na angalau vibambo 6!');
+  }
+
+  let payload = {
+    name: nameEl.value.trim(),
+    email: emailEl.value.trim(),
+    phone: phoneEl.value.trim(),
+    password: passEl.value,
+    role: rtypeEl.value
+  };
+
+  if (rtypeEl.value === 'SELLER') {
+    if (!storeEl.value.trim()) return toast('Muuzaji lazima aweke Jina la Duka!');
+    payload.storeName = storeEl.value.trim();
+  }
+
+  try {
+    let d = await api('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    token = d.token;
+    me = d.user;
+    localStorage.setItem('soul_token', token);
+    localStorage.setItem('soul_user', JSON.stringify(me));
+    toast('Akaunti imefunguliwa salama!');
+    show(me.role === 'SELLER' ? 'sellerdash' : 'account');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function orders() {
+  if (!me) return loginPage();
+  let d = await api('/orders');
+  document.getElementById('app').innerHTML = `<section class="section">
+    <h1>Oda Zangu</h1>
+    ${d.orders.map(o => `<div class="panel">
+      <b>Oda #SO${o.id}</b>
+      <span style="float:right">${money(o.total)}</span>
+      <p>Status: <span class="badge">${o.status}</span></p>
+      <p>${esc(o.delivery_address || '')}</p>
+    </div>`).join('') || '<div class="empty">Bado huna oda.</div>'}
+  </section>`;
+}
+
+function account() {
+  document.getElementById('app').innerHTML = `<section class="section">
+    <div class="panel">
+      <h1>Karibu, ${esc(me.name)}</h1>
+      <p>${esc(me.email)} · ${me.role}</p>
+      <button class="primary" onclick="show('orders')">Oda Zangu</button>
+      <button onclick="logout()">Toka</button>
+    </div>
+  </section>`;
+}
+
+async function sellerDash() {
+  if (!me) return loginPage();
+  let d = await api('/seller/products');
+  document.getElementById('app').innerHTML = `<section class="dash">
+    <aside class="side">
+      <h2>SOUL Seller</h2>
+      <button onclick="show('sellerdash')">Muhtasari</button>
+      <button onclick="addProductPage()">➕ Ongeza Bidhaa</button>
+      <button onclick="sellerProducts()">Bidhaa</button>
+      <button onclick="show('orders')">Oda</button>
+      <button onclick="verifyPage()">✓ SOUL Verified</button>
+      <button onclick="logout()">Toka</button>
+    </aside>
+    <div class="content">
+      <h1>Dashibodi ya Muuzaji</h1>
+      <div class="stats">
+        <div class="stat">Bidhaa<b>${d.products.length}</b></div>
+        <div class="stat">Duka<b>SOUL Store</b></div>
+        <div class="stat">Status<b>Inafanya kazi</b></div>
+      </div>
+      <h2>Bidhaa zako</h2>
+      <div class="grid">${d.products.slice(0, 6).map(productCard).join('') || '<div class="empty">Ongeza bidhaa yako ya kwanza.</div>'}</div>
+    </div>
+  </section>`;
+}
+
+async function sellerProducts() {
+  let d = await api('/seller/products');
+  document.getElementById('app').innerHTML = `<section class="section">
+    <h1>Bidhaa Zangu</h1>
+    <button class="primary" onclick="addProductPage()">➕ Ongeza Bidhaa</button>
+    <div class="grid" style="margin-top:20px">${d.products.map(productCard).join('')}</div>
+  </section>`;
+}
+
+function addProductPage() {
+  document.getElementById('app').innerHTML = `<div class="panel form">
+    <h1>Ongeza Bidhaa</h1>
+    <input id="pn" placeholder="Jina la bidhaa">
+    <select id="pc">
+      <option>Simu</option><option>Kompyuta</option><option>Audio</option>
+      <option>Smartwatches</option><option>Gaming</option><option>Chargers</option><option>Power Banks</option>
+    </select>
+    <textarea id="pd" placeholder="Maelezo"></textarea>
+    <input id="pp" type="number" placeholder="Bei TSh">
+    <input id="ps" type="number" placeholder="Stock">
+    <input id="pi" placeholder="URL ya picha (optional)">
+    <button class="primary" onclick="addProduct()">Hifadhi Bidhaa</button>
+  </div>`;
+}
+
+async function addProduct() {
+  const pn = document.getElementById('pn');
+  const pc = document.getElementById('pc');
+  const pd = document.getElementById('pd');
+  const pp = document.getElementById('pp');
+  const ps = document.getElementById('ps');
+  const pi = document.getElementById('pi');
+
+  try {
+    await api('/products', {
+      method: 'POST',
+      body: JSON.stringify({ name: pn.value, category: pc.value, description: pd.value, price: pp.value, stock: ps.value, image_url: pi.value })
+    });
+    toast('Bidhaa imeongezwa');
+    show('sellerdash');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function verifyPage() {
+  document.getElementById('app').innerHTML = `<div class="panel form">
+    <h1>✓ SOUL Verified</h1>
+    <p>Tuma ombi la kuhakikiwa kama muuzaji.</p>
+    <input id="bn" placeholder="Jina la biashara">
+    <button class="primary" onclick="verify()">Tuma Ombi</button>
+  </div>`;
+}
+
+async function verify() {
+  const bn = document.getElementById('bn');
+  try {
+    await api('/seller/verify', { method: 'POST', body: JSON.stringify({ business_name: bn.value }) });
+    toast('Ombi limetumwa');
+    show('sellerdash');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function admin() {
+  let s = await api('/admin/stats');
+  document.getElementById('app').innerHTML = `<section class="dash">
+    <aside class="side">
+      <h2>SOUL CONTROL TOWER</h2>
+      <button onclick="show('admin')">📊 Muhtasari</button>
+      <button onclick="adminSellers()">🏪 Wauzaji</button>
+      <button onclick="show('orders')">📦 Oda</button>
+      <button onclick="adminDisputes()">⚠️ Migogoro</button>
+      <button onclick="logout()">Toka</button>
+    </aside>
+    <div class="content">
+      <h1>Admin Control Tower</h1>
+      <div class="stats">${[['Watumiaji', s.stats.users], ['Wanunuzi', s.stats.buyers], ['Wauzaji', s.stats.sellers], ['Bidhaa', s.stats.products], ['Oda', s.stats.orders], ['GMV', money(s.stats.gmv)], ['Migogoro', s.stats.disputes], ['Uhakiki', s.stats.verifications]].map(x => `<div class="stat">${x[0]}<b>${x[1]}</b></div>`).join('')}</div>
+      <div class="panel">
+        <h2>SOUL Admin</h2>
+        <p>Hii ni Control Tower ya kusimamia marketplace.</p>
+      </div>
+    </div>
+  </section>`;
+}
+
+async function adminSellers() {
+  let d = await api('/admin/sellers');
+  document.getElementById('app').innerHTML = `<section class="section">
+    <h1>Wauzaji</h1>
+    <table>
+      <tr><th>Duka</th><th>Muuzaji</th><th>Hali</th><th>Kitendo</th></tr>
+      ${d.sellers.map(s => `<tr><td>${esc(s.store_name || '-')}</td><td>${esc(s.name)}</td><td>${s.verified ? '✓ Verified' : 'Inasubiri'}</td><td>${s.verified ? '—' : `<button onclick="approve(${s.id})">Thibitisha</button>`}</td></tr>`).join('')}
+    </table>
+  </section>`;
+}
+
+async function approve(id) {
+  await api('/admin/sellers/' + id + '/verify', { method: 'POST' });
+  toast('Muuzaji amethibitishwa');
+  adminSellers();
+}
+
+async function adminDisputes() {
+  let d = await api('/admin/disputes');
+  document.getElementById('app').innerHTML = `<section class="section">
+    <h1>Migogoro</h1>
+    ${d.disputes.map(x => `<div class="panel"><b>Oda #${x.order_id}</b><p>${esc(x.reason)}</p><span class="badge">${x.status}</span></div>`).join('') || '<div class="empty">Hakuna migogoro.</div>'}
+  </section>`;
+}
+
+function seller() {
+  document.getElementById('app').innerHTML = `<section class="hero">
+    <div>
+      <h1>Geuza biashara yako kuwa duka la kidigitali.</h1>
+      <p>Fungua SOUL Store, ongeza bidhaa, pokea oda na simamia mauzo yako.</p>
+      <button class="primary" onclick="show('register')">Jisajili kama Muuzaji</button>
+    </div>
+    <div style="font-size:110px">🏪</div>
+  </section>`;
+}
+
+async function searchProducts() {
+  const s = document.getElementById('search');
+  if (s) document.getElementById('app').innerHTML = await shop(s.value);
+}
+
+async function shopCat(c) {
+  document.getElementById('app').innerHTML = await shop('', c);
+}
+
+async function show(page) {
+  try {
+    let html = page === 'home' ? await home()
+      : page === 'shop' ? await shop()
+      : page === 'cart' ? await cartPage()
+      : page === 'login' ? loginPage()
+      : page === 'register' ? registerPage()
+      : page === 'seller' ? seller()
+      : page === 'orders' ? await orders()
+      : page === 'account' ? account()
+      : page === 'sellerdash' ? await sellerDash()
+      : page === 'admin' ? await admin()
+      : '<div class="empty">Ukurasa haujapatikana.</div>';
+    if (html !== undefined) document.getElementById('app').innerHTML = html;
+  } catch (e) {
+    toast(e.message);
+  }
+  save();
+}
+
+show('home');
+save();
