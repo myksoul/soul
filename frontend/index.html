@@ -1,18 +1,41 @@
-<!doctype html>
+ <!doctype html>
 <html lang="sw">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MEGA MART — Soko lako. Chaguo lako.</title>
-<link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SOUL — Soko lako. Chaguo lako.</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand" onclick="show('home')"><span>SOUL</span><small>Soko lako. Chaguo lako.</small></div>
-  <div class="search"><input id="search" placeholder="Unatafuta nini leo?" onkeydown="if(event.key==='Enter')searchProducts()"><button onclick="searchProducts()">Tafuta</button></div>
-  <nav><button onclick="show('home')">Mwanzo</button><button onclick="show('shop')">Nunua</button><button onclick="show('seller')">Uza kwenye SOUL</button><button onclick="show('login')">Ingia</button><button class="cart" onclick="show('cart')">🛒 <b id="cartCount">0</b></button></nav>
-</header>
-<main id="app"></main>
-<footer><div><b>SOUL</b><p>Soko lako. Chaguo lako. SOUL yako.</p></div><div>Nunua · Uza · Msaada · Faragha · Masharti</div><div>Tanzania 🇹🇿</div></footer>
-<script src="app.js"></script>
+  <header class="top">
+    <div class="brand" onclick="show('home')">
+      <span>SOUL</span>
+      <small>Soko lako. Chaguo lako.</small>
+    </div>
+    <div class="search">
+      <input id="search" placeholder="Unatafuta nini leo?" onkeydown="if(event.key==='Enter')searchProducts()">
+      <button onclick="searchProducts()">Tafuta</button>
+    </div>
+    <nav>
+      <button onclick="show('home')">Mwanzo</button>
+      <button onclick="show('shop')">Nunua</button>
+      <button onclick="show('seller')">Uza kwenye SOUL</button>
+      <button onclick="show('login')">Ingia</button>
+      <button class="cart" onclick="show('cart')">🛒 <b id="cartCount">0</b></button>
+    </nav>
+  </header>
+
+  <main id="app"></main>
+
+  <footer>
+    <div>
+      <b>SOUL</b>
+      <p>Soko lako. Chaguo lako. SOUL yako.</p>
+    </div>
+    <div>Nunua · Uza · Msaada · Faragha · Masharti</div>
+    <div>Tanzania 🇹🇿</div>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
