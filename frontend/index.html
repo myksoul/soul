@@ -32,14 +32,23 @@ function save() {
 function logout() {
   token = '';
   me = null;
-  localStorage.clear();
+  // FIX: usitumie localStorage.clear() — inafuta data zote za domain,
+  // hata za app nyingine. Futa keys za Mega Mart pekee.
+  localStorage.removeItem('megamart_token');
+  localStorage.removeItem('megamart_user');
+  localStorage.removeItem('megamart_cart');
+  cart = [];
   show('home');
   toast('Umetoka kwenye akaunti');
 }
 
 function productCard(p) {
+  // FIX: onyesha picha halisi ukiwa nayo (image_url), emoji iwe fallback tu
+  const pic = p.image_url
+    ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'pic',textContent:'📱'}))">`
+    : `<div class="pic">📱</div>`;
   return `<div class="card">
-    <div class="pic">📱</div>
+    ${pic}
     <div class="body">
       <span class="badge">${p.verified ? '✓ Mega Mart Verified' : 'Muuzaji'}</span>
       <h3>${esc(p.name)}</h3>
@@ -87,9 +96,15 @@ async function shop(q = '', cat = '') {
   </section>`;
 }
 
+// FIX: details() sasa inarudisha HTML (return) badala ya kuandika innerHTML
+// moja kwa moja, ili ipite kwenye try/catch ya show() na ionyeshe toast
+// endapo kuna hitilafu, badala ya kuacha screen tupu.
 async function details(id) {
   let d = await api('/products/' + id), p = d.product;
-  document.getElementById('app').innerHTML = `<section class="panel">
+  const pic = p.image_url
+    ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" style="max-width:100%" onerror="this.replaceWith(Object.assign(document.createElement('div'),{style:'font-size:150px',textContent:'📦'}))">`
+    : `<div style="font-size:150px">📦</div>`;
+  return `<section class="panel">
     <button onclick="show('shop')">← Rudi</button>
     <div class="hero" style="margin:20px 0">
       <div>
@@ -100,7 +115,7 @@ async function details(id) {
         <p>Muuzaji: <b>${esc(p.store_name || p.seller_name)}</b> · ⭐ ${p.rating || 'Mpya'}</p>
         <button class="primary" onclick="addCart(${p.id})">Ongeza kwenye Kikapu</button>
       </div>
-      <div style="font-size:150px">📦</div>
+      ${pic}
     </div>
     <h2>Maoni</h2>
     ${(d.reviews || []).map(r => `<p>⭐ ${r.rating}/5 — ${esc(r.comment)} <span class="muted">(${esc(r.buyer_name)})</span></p>`).join('') || '<p class="muted">Bado hakuna maoni.</p>'}
@@ -115,16 +130,18 @@ function addCart(id) {
   toast('Bidhaa imeongezwa kwenye kikapu');
 }
 
+// FIX: soma bidhaa zote za kikapu kwa wakati mmoja (Promise.all) badala ya
+// moja baada ya nyingine — haraka zaidi hasa kikapu kikiwa na bidhaa nyingi.
 async function cartPage() {
+  const results = await Promise.allSettled(cart.map(x => api('/products/' + x.product_id)));
   let rows = [];
-  for (const x of cart) {
-    try {
-      let d = await api('/products/' + x.product_id);
-      if (d && d.product) rows.push({ ...x, p: d.product });
-    } catch (err) {
-      console.warn('Imeshindwa kupata taarifa za bidhaa:', x.product_id);
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value && r.value.product) {
+      rows.push({ ...cart[i], p: r.value.product });
+    } else {
+      console.warn('Imeshindwa kupata taarifa za bidhaa:', cart[i].product_id);
     }
-  }
+  });
   let total = rows.reduce((a, x) => a + (x.p.price || 0) * x.quantity, 0);
   return `<section class="section">
     <h1>Kikapu</h1>
@@ -136,7 +153,7 @@ async function cartPage() {
     </div>`).join('') || '<div class="empty">Kikapu kiko wazi.</div>'}
     <div class="panel">
       <h2>Jumla: ${money(total)}</h2>
-      <button class="primary" onclick="checkout()">Endelea Kulipa</button>
+      <button class="primary" onclick="checkoutPage()" ${rows.length ? '' : 'disabled'}>Endelea Kulipa</button>
     </div>
   </section>`;
 }
@@ -147,11 +164,27 @@ function removeCart(id) {
   show('cart');
 }
 
-async function checkout() {
+// FIX: checkout() ilikuwa inatumia prompt() kuomba anwani — browsers nyingi
+// za simu (WebView, PWA) huzuia prompt() kabisa, hivyo wateja washindwe
+// ku-checkout. Sasa ni fomu ya kawaida ndani ya ukurasa.
+function checkoutPage() {
   if (!me) return show('login');
-  if (me.role !== 'BUYER') return toast('Ingia kama mnunuzi');
-  let address = prompt('Weka anwani ya delivery:');
-  if (!address) return;
+  if (me.role !== 'BUYER') { toast('Ingia kama mnunuzi'); return; }
+  if (!cart.length) { toast('Kikapu chako kiko wazi'); return show('cart'); }
+  document.getElementById('app').innerHTML = `<div class="panel form">
+    <h1>Maliza Oda</h1>
+    <p class="muted">Weka anwani sahihi ya kufikisha bidhaa yako.</p>
+    <textarea id="addr" placeholder="Anwani ya delivery (mtaa, mji, alama za karibu)"></textarea>
+    <button class="primary" onclick="checkout()">Thibitisha Oda</button>
+    <button onclick="show('cart')">Rudi kwenye Kikapu</button>
+  </div>`;
+}
+
+async function checkout() {
+  const addrEl = document.getElementById('addr');
+  const address = addrEl ? addrEl.value.trim() : '';
+  if (!address) return toast('Tafadhali weka anwani ya delivery');
+  if (!cart.length) return toast('Kikapu chako kiko wazi');
   try {
     let o = await api('/orders', { method: 'POST', body: JSON.stringify({ items: cart, delivery_address: address }) });
     cart = [];
@@ -178,7 +211,7 @@ async function login() {
   const emailEl = document.getElementById('email');
   const passEl = document.getElementById('pass');
   if (!emailEl || !passEl || !emailEl.value || !passEl.value) return toast('Jaza email na password!');
-  
+
   try {
     let d = await api('/auth/login', {
       method: 'POST',
@@ -224,6 +257,13 @@ async function register() {
   if (!nameEl.value || !emailEl.value || !phoneEl.value || !passEl.value) {
     return toast('Tafadhali jaza sehemu zote zinazotakiwa!');
   }
+
+  // FIX: uthibitisho wa msingi wa email na namba ya simu kabla ya kutuma
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailEl.value.trim());
+  if (!emailOk) return toast('Weka barua pepe sahihi!');
+
+  const phoneOk = /^0[67]\d{8}$/.test(phoneEl.value.trim());
+  if (!phoneOk) return toast('Weka namba ya simu sahihi (mfano: 0712345678)!');
 
   if (passEl.value.length < 6) {
     return toast('Password lazima iwe na angalau vibambo 6!');
@@ -291,9 +331,9 @@ async function sellerDash() {
       <h2>Mega Mart Seller</h2>
       <button onclick="show('sellerdash')">Muhtasari</button>
       <button onclick="addProductPage()">➕ Ongeza Bidhaa</button>
-      <button onclick="sellerProducts()">Bidhaa</button>
+      <button onclick="show('sellerproducts')">Bidhaa</button>
       <button onclick="show('orders')">Oda</button>
-      <button onclick="verifyPage()">✓ Mega Mart Verified</button>
+      <button onclick="show('verify')">✓ Mega Mart Verified</button>
       <button onclick="logout()">Toka</button>
     </aside>
     <div class="content">
@@ -309,12 +349,14 @@ async function sellerDash() {
   </section>`;
 }
 
+// FIX: sasa inarudisha HTML (return) badala ya kuandika innerHTML moja kwa
+// moja, ili ipite kwenye try/catch ya show().
 async function sellerProducts() {
   let d = await api('/seller/products');
-  document.getElementById('app').innerHTML = `<section class="section">
+  return `<section class="section">
     <h1>Bidhaa Zangu</h1>
     <button class="primary" onclick="addProductPage()">➕ Ongeza Bidhaa</button>
-    <div class="grid" style="margin-top:20px">${(d.products || []).map(productCard).join('')}</div>
+    <div class="grid" style="margin-top:20px">${(d.products || []).map(productCard).join('') || '<div class="empty">Bado huna bidhaa.</div>'}</div>
   </section>`;
 }
 
@@ -327,8 +369,8 @@ function addProductPage() {
       <option>Smartwatches</option><option>Gaming</option><option>Chargers</option><option>Power Banks</option>
     </select>
     <textarea id="pd" placeholder="Maelezo"></textarea>
-    <input id="pp" type="number" placeholder="Bei TSh">
-    <input id="ps" type="number" placeholder="Stock">
+    <input id="pp" type="number" min="0" step="1" placeholder="Bei TSh">
+    <input id="ps" type="number" min="0" step="1" placeholder="Stock">
     <input id="pi" placeholder="URL ya picha (optional)">
     <button class="primary" onclick="addProduct()">Hifadhi Bidhaa</button>
   </div>`;
@@ -342,10 +384,19 @@ async function addProduct() {
   const ps = document.getElementById('ps');
   const pi = document.getElementById('pi');
 
+  // FIX: uthibitisho wa msingi kabla ya kutuma kwa backend
+  if (!pn.value.trim()) return toast('Weka jina la bidhaa');
+
+  const price = Number(pp.value);
+  if (!pp.value || isNaN(price) || price <= 0) return toast('Weka bei sahihi ya bidhaa');
+
+  const stock = Number(ps.value);
+  if (!ps.value || isNaN(stock) || stock < 0 || !Number.isInteger(stock)) return toast('Weka idadi sahihi ya stock');
+
   try {
     await api('/products', {
       method: 'POST',
-      body: JSON.stringify({ name: pn.value, category: pc.value, description: pd.value, price: pp.value, stock: ps.value, image_url: pi.value })
+      body: JSON.stringify({ name: pn.value.trim(), category: pc.value, description: pd.value.trim(), price, stock, image_url: pi.value.trim() })
     });
     toast('Bidhaa imeongezwa');
     show('sellerdash');
@@ -355,7 +406,7 @@ async function addProduct() {
 }
 
 function verifyPage() {
-  document.getElementById('app').innerHTML = `<div class="panel form">
+  return `<div class="panel form">
     <h1>✓ Mega Mart Verified</h1>
     <p>Tuma ombi la kuhakikiwa kama muuzaji.</p>
     <input id="bn" placeholder="Jina la biashara">
@@ -365,8 +416,9 @@ function verifyPage() {
 
 async function verify() {
   const bn = document.getElementById('bn');
+  if (!bn.value.trim()) return toast('Weka jina la biashara');
   try {
-    await api('/seller/verify', { method: 'POST', body: JSON.stringify({ business_name: bn.value }) });
+    await api('/seller/verify', { method: 'POST', body: JSON.stringify({ business_name: bn.value.trim() }) });
     toast('Ombi limetumwa');
     show('sellerdash');
   } catch (e) {
@@ -380,9 +432,9 @@ async function admin() {
     <aside class="side">
       <h2>CONTROL TOWER</h2>
       <button onclick="show('admin')">📊 Muhtasari</button>
-      <button onclick="adminSellers()">🏪 Wauzaji</button>
+      <button onclick="show('adminsellers')">🏪 Wauzaji</button>
       <button onclick="show('orders')">📦 Oda</button>
-      <button onclick="adminDisputes()">⚠️ Migogoro</button>
+      <button onclick="show('admindisputes')">⚠️ Migogoro</button>
       <button onclick="logout()">Toka</button>
     </aside>
     <div class="content">
@@ -396,9 +448,10 @@ async function admin() {
   </section>`;
 }
 
+// FIX: sasa inarudisha HTML badala ya innerHTML moja kwa moja.
 async function adminSellers() {
   let d = await api('/admin/sellers');
-  document.getElementById('app').innerHTML = `<section class="section">
+  return `<section class="section">
     <h1>Wauzaji</h1>
     <table>
       <tr><th>Duka</th><th>Muuzaji</th><th>Hali</th><th>Kitendo</th></tr>
@@ -408,14 +461,19 @@ async function adminSellers() {
 }
 
 async function approve(id) {
-  await api('/admin/sellers/' + id + '/verify', { method: 'POST' });
-  toast('Muuzaji amethibitishwa');
-  adminSellers();
+  try {
+    await api('/admin/sellers/' + id + '/verify', { method: 'POST' });
+    toast('Muuzaji amethibitishwa');
+    show('adminsellers');
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
+// FIX: sasa inarudisha HTML badala ya innerHTML moja kwa moja.
 async function adminDisputes() {
   let d = await api('/admin/disputes');
-  document.getElementById('app').innerHTML = `<section class="section">
+  return `<section class="section">
     <h1>Migogoro</h1>
     ${(d.disputes || []).map(x => `<div class="panel"><b>Oda #${x.order_id}</b><p>${esc(x.reason)}</p><span class="badge">${x.status}</span></div>`).join('') || '<div class="empty">Hakuna migogoro.</div>'}
   </section>`;
@@ -453,7 +511,11 @@ async function show(page) {
     else if (page === 'orders') html = await orders();
     else if (page === 'account') html = account();
     else if (page === 'sellerdash') html = await sellerDash();
+    else if (page === 'sellerproducts') html = await sellerProducts();
+    else if (page === 'verify') html = verifyPage();
     else if (page === 'admin') html = await admin();
+    else if (page === 'adminsellers') html = await adminSellers();
+    else if (page === 'admindisputes') html = await adminDisputes();
     else html = '<div class="empty">Ukurasa haujapatikana.</div>';
 
     const appEl = document.getElementById('app');
@@ -463,6 +525,16 @@ async function show(page) {
   }
   save();
 }
+
+// FIX: usawazishaji kati ya tabs — login/logout kwenye tab moja sasa
+// inaonekana kwenye tabs nyingine za website hiyo hiyo.
+window.addEventListener('storage', (e) => {
+  if (e.key === 'megamart_token' || e.key === 'megamart_user') {
+    token = localStorage.getItem('megamart_token') || '';
+    me = JSON.parse(localStorage.getItem('megamart_user') || 'null');
+    show('home');
+  }
+});
 
 // Hakikisha ukurasa unapakia kwanza kabla ya kuanzisha JS
 window.addEventListener('DOMContentLoaded', () => {
