@@ -1,4 +1,9 @@
- const API = '/api';
+ // ==========================================
+// BADILISHA LINK HII CHINI WEKA YA RENDER BACKEND YAKO
+// ==========================================
+const API_BASE_URL = 'https://YOUR_BACKEND_NAME.onrender.com'; // 👈 Weka Render URL ya Backend hapa
+const API = `${API_BASE_URL.replace(/\/$/, '')}/api`;
+
 let token = localStorage.getItem('soul_token') || '';
 let me = JSON.parse(localStorage.getItem('soul_user') || 'null');
 let cart = JSON.parse(localStorage.getItem('soul_cart') || '[]');
