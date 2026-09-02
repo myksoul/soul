@@ -26,7 +26,7 @@ function toast(s) {
 function save() {
   localStorage.setItem('megamart_cart', JSON.stringify(cart));
   const el = document.getElementById('cartCount');
-  if (el) el.textContent = cart.reduce((a, b) => a + b.quantity, 0);
+  if (el) el.textContent = cart.reduce((a, b) => a + (b.quantity || 0), 0);
 }
 
 function logout() {
@@ -71,7 +71,7 @@ async function home() {
   </section>
   <section class="section">
     <h2>Bidhaa Zinazopendwa</h2>
-    <div class="grid">${d.products.slice(0, 8).map(productCard).join('') || '<div class="empty">Bado hakuna bidhaa. Muuzaji wa kwanza anaweza kuwa wewe.</div>'}</div>
+    <div class="grid">${(d.products || []).slice(0, 8).map(productCard).join('') || '<div class="empty">Bado hakuna bidhaa. Muuzaji wa kwanza anaweza kuwa wewe.</div>'}</div>
   </section>`;
 }
 
@@ -83,7 +83,7 @@ async function shop(q = '', cat = '') {
       <button class="cat" onclick="shopCat('')">Zote</button>
       ${['Simu', 'Kompyuta', 'Audio', 'Smartwatches', 'Gaming', 'Chargers', 'Power Banks'].map(c => `<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}
     </div><br>
-    <div class="grid">${d.products.map(productCard).join('') || '<div class="empty">Hakuna bidhaa zilizopatikana.</div>'}</div>
+    <div class="grid">${(d.products || []).map(productCard).join('') || '<div class="empty">Hakuna bidhaa zilizopatikana.</div>'}</div>
   </section>`;
 }
 
@@ -103,7 +103,7 @@ async function details(id) {
       <div style="font-size:150px">📦</div>
     </div>
     <h2>Maoni</h2>
-    ${d.reviews.map(r => `<p>⭐ ${r.rating}/5 — ${esc(r.comment)} <span class="muted">(${esc(r.buyer_name)})</span></p>`).join('') || '<p class="muted">Bado hakuna maoni.</p>'}
+    ${(d.reviews || []).map(r => `<p>⭐ ${r.rating}/5 — ${esc(r.comment)} <span class="muted">(${esc(r.buyer_name)})</span></p>`).join('') || '<p class="muted">Bado hakuna maoni.</p>'}
   </section>`;
 }
 
@@ -120,10 +120,12 @@ async function cartPage() {
   for (const x of cart) {
     try {
       let d = await api('/products/' + x.product_id);
-      rows.push({ ...x, p: d.product });
-    } catch {}
+      if (d && d.product) rows.push({ ...x, p: d.product });
+    } catch (err) {
+      console.warn('Imeshindwa kupata taarifa za bidhaa:', x.product_id);
+    }
   }
-  let total = rows.reduce((a, x) => a + x.p.price * x.quantity, 0);
+  let total = rows.reduce((a, x) => a + (x.p.price || 0) * x.quantity, 0);
   return `<section class="section">
     <h1>Kikapu</h1>
     ${rows.map(x => `<div class="panel">
@@ -162,7 +164,7 @@ async function checkout() {
 }
 
 function loginPage() {
-  document.getElementById('app').innerHTML = `<div class="panel form">
+  return `<div class="panel form">
     <h1>Ingia Mega Mart</h1>
     <input id="email" type="email" placeholder="Barua pepe">
     <input id="pass" type="password" placeholder="Password">
@@ -175,7 +177,7 @@ function loginPage() {
 async function login() {
   const emailEl = document.getElementById('email');
   const passEl = document.getElementById('pass');
-  if (!emailEl.value || !passEl.value) return toast('Jaza email na password!');
+  if (!emailEl || !passEl || !emailEl.value || !passEl.value) return toast('Jaza email na password!');
   
   try {
     let d = await api('/auth/login', {
@@ -194,7 +196,7 @@ async function login() {
 }
 
 function registerPage() {
-  document.getElementById('app').innerHTML = `<div class="panel form">
+  return `<div class="panel form">
     <h1>Jisajili Mega Mart</h1>
     <input id="name" placeholder="Jina kamili">
     <input id="email" type="email" placeholder="Barua pepe (Mfano: info@megamart.com)">
@@ -259,9 +261,9 @@ async function register() {
 async function orders() {
   if (!me) return loginPage();
   let d = await api('/orders');
-  document.getElementById('app').innerHTML = `<section class="section">
+  return `<section class="section">
     <h1>Oda Zangu</h1>
-    ${d.orders.map(o => `<div class="panel">
+    ${(d.orders || []).map(o => `<div class="panel">
       <b>Oda #MM${o.id}</b>
       <span style="float:right">${money(o.total)}</span>
       <p>Status: <span class="badge">${o.status}</span></p>
@@ -271,10 +273,10 @@ async function orders() {
 }
 
 function account() {
-  document.getElementById('app').innerHTML = `<section class="section">
+  return `<section class="section">
     <div class="panel">
-      <h1>Karibu, ${esc(me.name)}</h1>
-      <p>${esc(me.email)} · ${me.role}</p>
+      <h1>Karibu, ${esc(me?.name || 'Mtumiaji')}</h1>
+      <p>${esc(me?.email || '')} · ${me?.role || ''}</p>
       <button class="primary" onclick="show('orders')">Oda Zangu</button>
       <button onclick="logout()">Toka</button>
     </div>
@@ -284,7 +286,7 @@ function account() {
 async function sellerDash() {
   if (!me) return loginPage();
   let d = await api('/seller/products');
-  document.getElementById('app').innerHTML = `<section class="dash">
+  return `<section class="dash">
     <aside class="side">
       <h2>Mega Mart Seller</h2>
       <button onclick="show('sellerdash')">Muhtasari</button>
@@ -297,12 +299,12 @@ async function sellerDash() {
     <div class="content">
       <h1>Dashibodi ya Muuzaji</h1>
       <div class="stats">
-        <div class="stat">Bidhaa<b>${d.products.length}</b></div>
+        <div class="stat">Bidhaa<b>${d.products ? d.products.length : 0}</b></div>
         <div class="stat">Duka<b>Mega Mart Store</b></div>
         <div class="stat">Status<b>Inafanya kazi</b></div>
       </div>
       <h2>Bidhaa zako</h2>
-      <div class="grid">${d.products.slice(0, 6).map(productCard).join('') || '<div class="empty">Ongeza bidhaa yako ya kwanza.</div>'}</div>
+      <div class="grid">${(d.products || []).slice(0, 6).map(productCard).join('') || '<div class="empty">Ongeza bidhaa yako ya kwanza.</div>'}</div>
     </div>
   </section>`;
 }
@@ -312,7 +314,7 @@ async function sellerProducts() {
   document.getElementById('app').innerHTML = `<section class="section">
     <h1>Bidhaa Zangu</h1>
     <button class="primary" onclick="addProductPage()">➕ Ongeza Bidhaa</button>
-    <div class="grid" style="margin-top:20px">${d.products.map(productCard).join('')}</div>
+    <div class="grid" style="margin-top:20px">${(d.products || []).map(productCard).join('')}</div>
   </section>`;
 }
 
@@ -374,7 +376,7 @@ async function verify() {
 
 async function admin() {
   let s = await api('/admin/stats');
-  document.getElementById('app').innerHTML = `<section class="dash">
+  return `<section class="dash">
     <aside class="side">
       <h2>CONTROL TOWER</h2>
       <button onclick="show('admin')">📊 Muhtasari</button>
@@ -400,7 +402,7 @@ async function adminSellers() {
     <h1>Wauzaji</h1>
     <table>
       <tr><th>Duka</th><th>Muuzaji</th><th>Hali</th><th>Kitendo</th></tr>
-      ${d.sellers.map(s => `<tr><td>${esc(s.store_name || '-')}</td><td>${esc(s.name)}</td><td>${s.verified ? '✓ Verified' : 'Inasubiri'}</td><td>${s.verified ? '—' : `<button onclick="approve(${s.id})">Thibitisha</button>`}</td></tr>`).join('')}
+      ${(d.sellers || []).map(s => `<tr><td>${esc(s.store_name || '-')}</td><td>${esc(s.name)}</td><td>${s.verified ? '✓ Verified' : 'Inasubiri'}</td><td>${s.verified ? '—' : `<button onclick="approve(${s.id})">Thibitisha</button>`}</td></tr>`).join('')}
     </table>
   </section>`;
 }
@@ -415,12 +417,12 @@ async function adminDisputes() {
   let d = await api('/admin/disputes');
   document.getElementById('app').innerHTML = `<section class="section">
     <h1>Migogoro</h1>
-    ${d.disputes.map(x => `<div class="panel"><b>Oda #${x.order_id}</b><p>${esc(x.reason)}</p><span class="badge">${x.status}</span></div>`).join('') || '<div class="empty">Hakuna migogoro.</div>'}
+    ${(d.disputes || []).map(x => `<div class="panel"><b>Oda #${x.order_id}</b><p>${esc(x.reason)}</p><span class="badge">${x.status}</span></div>`).join('') || '<div class="empty">Hakuna migogoro.</div>'}
   </section>`;
 }
 
 function seller() {
-  document.getElementById('app').innerHTML = `<section class="hero">
+  return `<section class="hero">
     <div>
       <h1>Geuza biashara yako kuwa duka la kidigitali.</h1>
       <p>Fungua Mega Mart Store, ongeza bidhaa, pokea oda na simamia mauzo yako.</p>
@@ -441,23 +443,29 @@ async function shopCat(c) {
 
 async function show(page) {
   try {
-    let html = page === 'home' ? await home()
-      : page === 'shop' ? await shop()
-      : page === 'cart' ? await cartPage()
-      : page === 'login' ? loginPage()
-      : page === 'register' ? registerPage()
-      : page === 'seller' ? seller()
-      : page === 'orders' ? await orders()
-      : page === 'account' ? account()
-      : page === 'sellerdash' ? await sellerDash()
-      : page === 'admin' ? await admin()
-      : '<div class="empty">Ukurasa haujapatikana.</div>';
-    if (html !== undefined) document.getElementById('app').innerHTML = html;
+    let html = '';
+    if (page === 'home') html = await home();
+    else if (page === 'shop') html = await shop();
+    else if (page === 'cart') html = await cartPage();
+    else if (page === 'login') html = loginPage();
+    else if (page === 'register') html = registerPage();
+    else if (page === 'seller') html = seller();
+    else if (page === 'orders') html = await orders();
+    else if (page === 'account') html = account();
+    else if (page === 'sellerdash') html = await sellerDash();
+    else if (page === 'admin') html = await admin();
+    else html = '<div class="empty">Ukurasa haujapatikana.</div>';
+
+    const appEl = document.getElementById('app');
+    if (appEl && html) appEl.innerHTML = html;
   } catch (e) {
     toast(e.message);
   }
   save();
 }
 
-show('home');
-save();
+// Hakikisha ukurasa unapakia kwanza kabla ya kuanzisha JS
+window.addEventListener('DOMContentLoaded', () => {
+  show('home');
+  save();
+});
