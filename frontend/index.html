@@ -1,543 +1,547 @@
- const API = '/api';
-let token = localStorage.getItem('megamart_token') || '';
-let me = JSON.parse(localStorage.getItem('megamart_user') || 'null');
-let cart = JSON.parse(localStorage.getItem('megamart_cart') || '[]');
+ <!doctype html>
+<html lang="sw">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="Megamart — Soko lako. Chaguo lako.">
+  <title>Megamart — Soko lako. Chaguo lako.</title>
 
-const money = n => 'TSh ' + Number(n || 0).toLocaleString('en-TZ');
-const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-
-async function api(path, opts = {}) {
-  opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
-  if (token) opts.headers.Authorization = 'Bearer ' + token;
-  const r = await fetch(API + path, opts);
-  const d = await r.json();
-  if (!r.ok) throw Error(d.error || d.message || 'Hitilafu imetokea');
-  return d;
-}
-
-function toast(s) {
-  const x = document.createElement('div');
-  x.className = 'toast';
-  x.textContent = s;
-  document.body.appendChild(x);
-  setTimeout(() => x.remove(), 2500);
-}
-
-function save() {
-  localStorage.setItem('megamart_cart', JSON.stringify(cart));
-  const el = document.getElementById('cartCount');
-  if (el) el.textContent = cart.reduce((a, b) => a + (b.quantity || 0), 0);
-}
-
-function logout() {
-  token = '';
-  me = null;
-  // FIX: usitumie localStorage.clear() — inafuta data zote za domain,
-  // hata za app nyingine. Futa keys za Mega Mart pekee.
-  localStorage.removeItem('megamart_token');
-  localStorage.removeItem('megamart_user');
-  localStorage.removeItem('megamart_cart');
-  cart = [];
-  show('home');
-  toast('Umetoka kwenye akaunti');
-}
-
-function productCard(p) {
-  // FIX: onyesha picha halisi ukiwa nayo (image_url), emoji iwe fallback tu
-  const pic = p.image_url
-    ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'pic',textContent:'📱'}))">`
-    : `<div class="pic">📱</div>`;
-  return `<div class="card">
-    ${pic}
-    <div class="body">
-      <span class="badge">${p.verified ? '✓ Mega Mart Verified' : 'Muuzaji'}</span>
-      <h3>${esc(p.name)}</h3>
-      <div class="price">${money(p.price)}</div>
-      <div class="muted">⭐ ${p.rating || 'Mpya'} · ${esc(p.store_name || p.seller_name)}</div>
-      <div class="muted">Stock: ${p.stock}</div>
-      <div class="actions">
-        <button onclick="addCart(${p.id})">🛒 Kikapu</button>
-        <button class="primary" onclick="details(${p.id})">Angalia</button>
-      </div>
-    </div>
-  </div>`;
-}
-
-async function home() {
-  let d = await api('/products');
-  return `<section class="hero">
-    <div>
-      <h1>Nunua kwa kujiamini. Uza kwa Mega Mart.</h1>
-      <p>Gundua electronics na technology products kutoka kwa wauzaji wa Tanzania. Jenga duka lako, pokea oda na simamia biashara yako sehemu moja.</p>
-      <button class="primary" onclick="show('shop')">Anza Kununua</button>
-      <button class="primary" onclick="show('seller')">Uza kwenye Mega Mart</button>
-    </div>
-    <div style="font-size:120px;align-self:center">🛍️</div>
-  </section>
-  <section class="section">
-    <h2>Makundi Maarufu</h2>
-    <div class="cats">${['Simu', 'Kompyuta', 'Audio', 'Smartwatches', 'Gaming', 'Chargers', 'Power Banks'].map(c => `<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}</div>
-  </section>
-  <section class="section">
-    <h2>Bidhaa Zinazopendwa</h2>
-    <div class="grid">${(d.products || []).slice(0, 8).map(productCard).join('') || '<div class="empty">Bado hakuna bidhaa. Muuzaji wa kwanza anaweza kuwa wewe.</div>'}</div>
-  </section>`;
-}
-
-async function shop(q = '', cat = '') {
-  let d = await api('/products?' + new URLSearchParams({ q, category: cat }));
-  return `<section class="section">
-    <h1>Nunua</h1>
-    <div class="cats">
-      <button class="cat" onclick="shopCat('')">Zote</button>
-      ${['Simu', 'Kompyuta', 'Audio', 'Smartwatches', 'Gaming', 'Chargers', 'Power Banks'].map(c => `<button class="cat" onclick="shopCat('${c}')">${c}</button>`).join('')}
-    </div><br>
-    <div class="grid">${(d.products || []).map(productCard).join('') || '<div class="empty">Hakuna bidhaa zilizopatikana.</div>'}</div>
-  </section>`;
-}
-
-// FIX: details() sasa inarudisha HTML (return) badala ya kuandika innerHTML
-// moja kwa moja, ili ipite kwenye try/catch ya show() na ionyeshe toast
-// endapo kuna hitilafu, badala ya kuacha screen tupu.
-async function details(id) {
-  let d = await api('/products/' + id), p = d.product;
-  const pic = p.image_url
-    ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" style="max-width:100%" onerror="this.replaceWith(Object.assign(document.createElement('div'),{style:'font-size:150px',textContent:'📦'}))">`
-    : `<div style="font-size:150px">📦</div>`;
-  return `<section class="panel">
-    <button onclick="show('shop')">← Rudi</button>
-    <div class="hero" style="margin:20px 0">
-      <div>
-        <span class="badge">${p.verified ? '✓ Mega Mart Verified' : 'Muuzaji'}</span>
-        <h1>${esc(p.name)}</h1>
-        <h2>${money(p.price)}</h2>
-        <p>${esc(p.description || 'Bidhaa bora kutoka Mega Mart.')}</p>
-        <p>Muuzaji: <b>${esc(p.store_name || p.seller_name)}</b> · ⭐ ${p.rating || 'Mpya'}</p>
-        <button class="primary" onclick="addCart(${p.id})">Ongeza kwenye Kikapu</button>
-      </div>
-      ${pic}
-    </div>
-    <h2>Maoni</h2>
-    ${(d.reviews || []).map(r => `<p>⭐ ${r.rating}/5 — ${esc(r.comment)} <span class="muted">(${esc(r.buyer_name)})</span></p>`).join('') || '<p class="muted">Bado hakuna maoni.</p>'}
-  </section>`;
-}
-
-function addCart(id) {
-  let x = cart.find(a => a.product_id === id);
-  if (x) x.quantity++;
-  else cart.push({ product_id: id, quantity: 1 });
-  save();
-  toast('Bidhaa imeongezwa kwenye kikapu');
-}
-
-// FIX: soma bidhaa zote za kikapu kwa wakati mmoja (Promise.all) badala ya
-// moja baada ya nyingine — haraka zaidi hasa kikapu kikiwa na bidhaa nyingi.
-async function cartPage() {
-  const results = await Promise.allSettled(cart.map(x => api('/products/' + x.product_id)));
-  let rows = [];
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled' && r.value && r.value.product) {
-      rows.push({ ...cart[i], p: r.value.product });
-    } else {
-      console.warn('Imeshindwa kupata taarifa za bidhaa:', cart[i].product_id);
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
-  });
-  let total = rows.reduce((a, x) => a + (x.p.price || 0) * x.quantity, 0);
-  return `<section class="section">
-    <h1>Kikapu</h1>
-    ${rows.map(x => `<div class="panel">
-      <b>${esc(x.p.name)}</b>
-      <span style="float:right">${money(x.p.price * x.quantity)}</span>
-      <p>Idadi: ${x.quantity}</p>
-      <button onclick="removeCart(${x.product_id})">Ondoa</button>
-    </div>`).join('') || '<div class="empty">Kikapu kiko wazi.</div>'}
-    <div class="panel">
-      <h2>Jumla: ${money(total)}</h2>
-      <button class="primary" onclick="checkoutPage()" ${rows.length ? '' : 'disabled'}>Endelea Kulipa</button>
-    </div>
-  </section>`;
-}
 
-function removeCart(id) {
-  cart = cart.filter(x => x.product_id !== id);
-  save();
-  show('cart');
-}
+    :root {
+      --dark: #0f172a;
+      --dark-2: #1e293b;
+      --green: #14b8a6;
+      --green-dark: #0f766e;
+      --light: #f8fafc;
+      --text: #0f172a;
+      --muted: #64748b;
+      --white: #ffffff;
+      --border: #e2e8f0;
+      --shadow: 0 10px 30px rgba(15, 23, 42, .08);
+    }
 
-// FIX: checkout() ilikuwa inatumia prompt() kuomba anwani — browsers nyingi
-// za simu (WebView, PWA) huzuia prompt() kabisa, hivyo wateja washindwe
-// ku-checkout. Sasa ni fomu ya kawaida ndani ya ukurasa.
-function checkoutPage() {
-  if (!me) return show('login');
-  if (me.role !== 'BUYER') { toast('Ingia kama mnunuzi'); return; }
-  if (!cart.length) { toast('Kikapu chako kiko wazi'); return show('cart'); }
-  document.getElementById('app').innerHTML = `<div class="panel form">
-    <h1>Maliza Oda</h1>
-    <p class="muted">Weka anwani sahihi ya kufikisha bidhaa yako.</p>
-    <textarea id="addr" placeholder="Anwani ya delivery (mtaa, mji, alama za karibu)"></textarea>
-    <button class="primary" onclick="checkout()">Thibitisha Oda</button>
-    <button onclick="show('cart')">Rudi kwenye Kikapu</button>
-  </div>`;
-}
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--light);
+      color: var(--text);
+      min-height: 100vh;
+    }
 
-async function checkout() {
-  const addrEl = document.getElementById('addr');
-  const address = addrEl ? addrEl.value.trim() : '';
-  if (!address) return toast('Tafadhali weka anwani ya delivery');
-  if (!cart.length) return toast('Kikapu chako kiko wazi');
-  try {
-    let o = await api('/orders', { method: 'POST', body: JSON.stringify({ items: cart, delivery_address: address }) });
-    cart = [];
-    save();
-    toast('Oda #' + o.order.id + ' imewekwa');
-    show('orders');
-  } catch (e) {
-    toast(e.message);
-  }
-}
+    button, input {
+      font: inherit;
+    }
 
-function loginPage() {
-  return `<div class="panel form">
-    <h1>Ingia Mega Mart</h1>
-    <input id="email" type="email" placeholder="Barua pepe">
-    <input id="pass" type="password" placeholder="Password">
-    <button class="primary" onclick="login()">Ingia</button>
-    <hr>
-    <p>Huna akaunti? <button onclick="show('register')">Jisajili</button></p>
-  </div>`;
-}
+    button {
+      cursor: pointer;
+    }
 
-async function login() {
-  const emailEl = document.getElementById('email');
-  const passEl = document.getElementById('pass');
-  if (!emailEl || !passEl || !emailEl.value || !passEl.value) return toast('Jaza email na password!');
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 23, 42, .97);
+      color: var(--white);
+      padding: 14px 5%;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      box-shadow: 0 4px 18px rgba(0,0,0,.12);
+    }
 
-  try {
-    let d = await api('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email: emailEl.value.trim(), password: passEl.value })
-    });
-    token = d.token;
-    me = d.user;
-    localStorage.setItem('megamart_token', token);
-    localStorage.setItem('megamart_user', JSON.stringify(me));
-    toast('Karibu ' + me.name);
-    show(me.role === 'ADMIN' ? 'admin' : me.role === 'SELLER' ? 'sellerdash' : 'account');
-  } catch (e) {
-    toast(e.message);
-  }
-}
+    .brand {
+      min-width: 175px;
+      cursor: pointer;
+      user-select: none;
+    }
 
-function registerPage() {
-  return `<div class="panel form">
-    <h1>Jisajili Mega Mart</h1>
-    <input id="name" placeholder="Jina kamili">
-    <input id="email" type="email" placeholder="Barua pepe (Mfano: info@megamart.com)">
-    <input id="phone" placeholder="Namba ya simu (Mfano: 0712345678)">
-    <input id="pass" type="password" placeholder="Password (Angalau vibambo 6)">
-    <select id="rtype" onchange="document.getElementById('storeField').style.display = this.value==='SELLER'?'block':'none'">
-      <option value="BUYER">Mnunuzi</option>
-      <option value="SELLER">Muuzaji</option>
-    </select>
-    <div id="storeField" style="display:none">
-      <input id="store" placeholder="Jina la duka (kwa muuzaji)">
-    </div>
-    <button class="primary" onclick="register()">Fungua akaunti</button>
-  </div>`;
-}
+    .brand span {
+      display: block;
+      color: #2dd4bf;
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 1px;
+    }
 
-async function register() {
-  const nameEl = document.getElementById('name');
-  const emailEl = document.getElementById('email');
-  const phoneEl = document.getElementById('phone');
-  const passEl = document.getElementById('pass');
-  const rtypeEl = document.getElementById('rtype');
-  const storeEl = document.getElementById('store');
+    .brand small {
+      color: #cbd5e1;
+      font-size: .72rem;
+    }
 
-  if (!nameEl.value || !emailEl.value || !phoneEl.value || !passEl.value) {
-    return toast('Tafadhali jaza sehemu zote zinazotakiwa!');
-  }
+    .search {
+      flex: 1;
+      display: flex;
+      max-width: 620px;
+      margin: auto;
+    }
 
-  // FIX: uthibitisho wa msingi wa email na namba ya simu kabla ya kutuma
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailEl.value.trim());
-  if (!emailOk) return toast('Weka barua pepe sahihi!');
+    .search input {
+      width: 100%;
+      border: 0;
+      outline: none;
+      padding: 12px 15px;
+      border-radius: 9px 0 0 9px;
+      background: white;
+      color: #111827;
+    }
 
-  const phoneOk = /^0[67]\d{8}$/.test(phoneEl.value.trim());
-  if (!phoneOk) return toast('Weka namba ya simu sahihi (mfano: 0712345678)!');
+    .search button {
+      border: 0;
+      padding: 0 18px;
+      border-radius: 0 9px 9px 0;
+      background: var(--green);
+      color: white;
+      font-weight: 700;
+    }
 
-  if (passEl.value.length < 6) {
-    return toast('Password lazima iwe na angalau vibambo 6!');
-  }
+    .search button:hover {
+      background: #0d9488;
+    }
 
-  let payload = {
-    name: nameEl.value.trim(),
-    email: emailEl.value.trim(),
-    phone: phoneEl.value.trim(),
-    password: passEl.value,
-    role: rtypeEl.value
-  };
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
 
-  if (rtypeEl.value === 'SELLER') {
-    if (!storeEl.value.trim()) return toast('Muuzaji lazima aweke Jina la Duka!');
-    payload.storeName = storeEl.value.trim();
-  }
+    nav button {
+      border: 0;
+      background: transparent;
+      color: white;
+      padding: 9px 10px;
+      border-radius: 7px;
+      font-weight: 600;
+    }
 
-  try {
-    let d = await api('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    token = d.token;
-    me = d.user;
-    localStorage.setItem('megamart_token', token);
-    localStorage.setItem('megamart_user', JSON.stringify(me));
-    toast('Akaunti imefunguliwa salama!');
-    show(me.role === 'SELLER' ? 'sellerdash' : 'account');
-  } catch (e) {
-    toast(e.message);
-  }
-}
+    nav button:hover {
+      background: rgba(255,255,255,.1);
+      color: #5eead4;
+    }
 
-async function orders() {
-  if (!me) return loginPage();
-  let d = await api('/orders');
-  return `<section class="section">
-    <h1>Oda Zangu</h1>
-    ${(d.orders || []).map(o => `<div class="panel">
-      <b>Oda #MM${o.id}</b>
-      <span style="float:right">${money(o.total)}</span>
-      <p>Status: <span class="badge">${o.status}</span></p>
-      <p>${esc(o.delivery_address || '')}</p>
-    </div>`).join('') || '<div class="empty">Bado huna oda.</div>'}
-  </section>`;
-}
+    nav .cart {
+      background: var(--green);
+    }
 
-function account() {
-  return `<section class="section">
-    <div class="panel">
-      <h1>Karibu, ${esc(me?.name || 'Mtumiaji')}</h1>
-      <p>${esc(me?.email || '')} · ${me?.role || ''}</p>
-      <button class="primary" onclick="show('orders')">Oda Zangu</button>
-      <button onclick="logout()">Toka</button>
-    </div>
-  </section>`;
-}
+    nav .cart:hover {
+      background: #0d9488;
+      color: white;
+    }
 
-async function sellerDash() {
-  if (!me) return loginPage();
-  let d = await api('/seller/products');
-  return `<section class="dash">
-    <aside class="side">
-      <h2>Mega Mart Seller</h2>
-      <button onclick="show('sellerdash')">Muhtasari</button>
-      <button onclick="addProductPage()">➕ Ongeza Bidhaa</button>
-      <button onclick="show('sellerproducts')">Bidhaa</button>
-      <button onclick="show('orders')">Oda</button>
-      <button onclick="show('verify')">✓ Mega Mart Verified</button>
-      <button onclick="logout()">Toka</button>
-    </aside>
-    <div class="content">
-      <h1>Dashibodi ya Muuzaji</h1>
-      <div class="stats">
-        <div class="stat">Bidhaa<b>${d.products ? d.products.length : 0}</b></div>
-        <div class="stat">Duka<b>Mega Mart Store</b></div>
-        <div class="stat">Status<b>Inafanya kazi</b></div>
+    #app {
+      min-height: 68vh;
+    }
+
+    .hero {
+      background:
+        linear-gradient(120deg, rgba(15,23,42,.94), rgba(15,118,110,.78)),
+        url("https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=1600&q=85");
+      background-size: cover;
+      background-position: center;
+      color: white;
+      padding: 76px 6%;
+    }
+
+    .hero-inner {
+      max-width: 1150px;
+      margin: auto;
+    }
+
+    .hero h1 {
+      max-width: 700px;
+      font-size: clamp(2.1rem, 5vw, 4.3rem);
+      line-height: 1.05;
+      margin-bottom: 18px;
+    }
+
+    .hero p {
+      max-width: 650px;
+      color: #e2e8f0;
+      font-size: 1.12rem;
+      line-height: 1.7;
+      margin-bottom: 28px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .primary-btn,
+    .secondary-btn {
+      border: 0;
+      border-radius: 9px;
+      padding: 13px 20px;
+      font-weight: 800;
+    }
+
+    .primary-btn {
+      background: var(--green);
+      color: white;
+    }
+
+    .secondary-btn {
+      background: white;
+      color: var(--dark);
+    }
+
+    .section {
+      max-width: 1150px;
+      margin: 0 auto;
+      padding: 52px 18px;
+    }
+
+    .section-title {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .section-title h2 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .section-title p {
+      color: var(--muted);
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .feature {
+      background: white;
+      padding: 25px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      box-shadow: var(--shadow);
+    }
+
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 12px;
+    }
+
+    .feature h3 {
+      margin-bottom: 8px;
+    }
+
+    .feature p {
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .categories {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .category {
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 14px;
+      padding: 22px 15px;
+      text-align: center;
+      font-weight: 800;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: transform .2s;
+    }
+
+    .category:hover {
+      transform: translateY(-3px);
+    }
+
+    .category span {
+      display: block;
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .cta {
+      background: linear-gradient(135deg, var(--dark), var(--dark-2));
+      color: white;
+      border-radius: 20px;
+      padding: 42px 30px;
+      text-align: center;
+    }
+
+    .cta h2 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+    }
+
+    .cta p {
+      color: #cbd5e1;
+      margin-bottom: 22px;
+    }
+
+    footer {
+      background: var(--dark);
+      color: white;
+      padding: 38px 6% 20px;
+    }
+
+    .footer-grid {
+      max-width: 1150px;
+      margin: auto;
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 30px;
+    }
+
+    footer h3 {
+      color: #2dd4bf;
+      margin-bottom: 10px;
+    }
+
+    footer p, footer li {
+      color: #94a3b8;
+      line-height: 1.7;
+    }
+
+    footer ul {
+      list-style: none;
+    }
+
+    .copyright {
+      max-width: 1150px;
+      margin: 28px auto 0;
+      padding-top: 18px;
+      border-top: 1px solid #334155;
+      text-align: center;
+      color: #64748b;
+      font-size: .9rem;
+    }
+
+    @media (max-width: 900px) {
+      .top {
+        flex-wrap: wrap;
+      }
+
+      .brand {
+        min-width: auto;
+      }
+
+      .search {
+        order: 3;
+        flex-basis: 100%;
+        max-width: none;
+      }
+
+      nav {
+        margin-left: auto;
+      }
+
+      .features {
+        grid-template-columns: 1fr;
+      }
+
+      .categories {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .top {
+        padding: 12px;
+      }
+
+      nav {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      nav button {
+        padding: 8px 6px;
+        font-size: .82rem;
+      }
+
+      .hero {
+        padding: 55px 18px;
+      }
+
+      .categories {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header class="top">
+  <div class="brand" onclick="show('home')">
+    <span>MEGAMART</span>
+    <small>Soko lako. Chaguo lako.</small>
+  </div>
+
+  <div class="search">
+    <input
+      id="search"
+      type="search"
+      placeholder="Unatafuta nini leo?"
+      onkeydown="if(event.key==='Enter') searchProducts()"
+    >
+    <button onclick="searchProducts()">Tafuta</button>
+  </div>
+
+  <nav>
+    <button onclick="show('home')">Mwanzo</button>
+    <button onclick="show('shop')">Nunua</button>
+    <button onclick="show('seller')">Uza</button>
+    <button onclick="show('login')">Ingia</button>
+    <button class="cart" onclick="show('cart')">
+      🛒 <b id="cartCount">0</b>
+    </button>
+  </nav>
+</header>
+
+<main id="app">
+
+  <section class="hero">
+    <div class="hero-inner">
+      <h1>Karibu MEGAMART</h1>
+      <p>
+        Jukwaa la kisasa linalowaunganisha wanunuzi na wauzaji
+        sehemu moja, kwa urahisi, usalama na huduma bora.
+      </p>
+
+      <div class="hero-actions">
+        <button class="primary-btn" onclick="show('shop')">
+          🛍️ Anza Kununua
+        </button>
+
+        <button class="secondary-btn" onclick="show('seller')">
+          🏪 Uza kwenye Megamart
+        </button>
       </div>
-      <h2>Bidhaa zako</h2>
-      <div class="grid">${(d.products || []).slice(0, 6).map(productCard).join('') || '<div class="empty">Ongeza bidhaa yako ya kwanza.</div>'}</div>
     </div>
-  </section>`;
-}
+  </section>
 
-// FIX: sasa inarudisha HTML (return) badala ya kuandika innerHTML moja kwa
-// moja, ili ipite kwenye try/catch ya show().
-async function sellerProducts() {
-  let d = await api('/seller/products');
-  return `<section class="section">
-    <h1>Bidhaa Zangu</h1>
-    <button class="primary" onclick="addProductPage()">➕ Ongeza Bidhaa</button>
-    <div class="grid" style="margin-top:20px">${(d.products || []).map(productCard).join('') || '<div class="empty">Bado huna bidhaa.</div>'}</div>
-  </section>`;
-}
+  <section class="section">
+    <div class="section-title">
+      <h2>Kwa nini MEGAMART?</h2>
+      <p>Tunafanya biashara mtandaoni iwe rahisi na salama.</p>
+    </div>
 
-function addProductPage() {
-  document.getElementById('app').innerHTML = `<div class="panel form">
-    <h1>Ongeza Bidhaa</h1>
-    <input id="pn" placeholder="Jina la bidhaa">
-    <select id="pc">
-      <option>Simu</option><option>Kompyuta</option><option>Audio</option>
-      <option>Smartwatches</option><option>Gaming</option><option>Chargers</option><option>Power Banks</option>
-    </select>
-    <textarea id="pd" placeholder="Maelezo"></textarea>
-    <input id="pp" type="number" min="0" step="1" placeholder="Bei TSh">
-    <input id="ps" type="number" min="0" step="1" placeholder="Stock">
-    <input id="pi" placeholder="URL ya picha (optional)">
-    <button class="primary" onclick="addProduct()">Hifadhi Bidhaa</button>
-  </div>`;
-}
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🔐</div>
+        <h3>Biashara Salama</h3>
+        <p>
+          Tunajenga mazingira salama kwa wanunuzi na wauzaji
+          wakati wa kufanya biashara.
+        </p>
+      </div>
 
-async function addProduct() {
-  const pn = document.getElementById('pn');
-  const pc = document.getElementById('pc');
-  const pd = document.getElementById('pd');
-  const pp = document.getElementById('pp');
-  const ps = document.getElementById('ps');
-  const pi = document.getElementById('pi');
+      <div class="feature">
+        <div class="feature-icon">🚚</div>
+        <h3>Ufikishaji wa Bidhaa</h3>
+        <p>
+          Pata bidhaa zako kwa urahisi kupitia mfumo wa
+          usafirishaji na delivery.
+        </p>
+      </div>
 
-  // FIX: uthibitisho wa msingi kabla ya kutuma kwa backend
-  if (!pn.value.trim()) return toast('Weka jina la bidhaa');
-
-  const price = Number(pp.value);
-  if (!pp.value || isNaN(price) || price <= 0) return toast('Weka bei sahihi ya bidhaa');
-
-  const stock = Number(ps.value);
-  if (!ps.value || isNaN(stock) || stock < 0 || !Number.isInteger(stock)) return toast('Weka idadi sahihi ya stock');
-
-  try {
-    await api('/products', {
-      method: 'POST',
-      body: JSON.stringify({ name: pn.value.trim(), category: pc.value, description: pd.value.trim(), price, stock, image_url: pi.value.trim() })
-    });
-    toast('Bidhaa imeongezwa');
-    show('sellerdash');
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-function verifyPage() {
-  return `<div class="panel form">
-    <h1>✓ Mega Mart Verified</h1>
-    <p>Tuma ombi la kuhakikiwa kama muuzaji.</p>
-    <input id="bn" placeholder="Jina la biashara">
-    <button class="primary" onclick="verify()">Tuma Ombi</button>
-  </div>`;
-}
-
-async function verify() {
-  const bn = document.getElementById('bn');
-  if (!bn.value.trim()) return toast('Weka jina la biashara');
-  try {
-    await api('/seller/verify', { method: 'POST', body: JSON.stringify({ business_name: bn.value.trim() }) });
-    toast('Ombi limetumwa');
-    show('sellerdash');
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-async function admin() {
-  let s = await api('/admin/stats');
-  return `<section class="dash">
-    <aside class="side">
-      <h2>CONTROL TOWER</h2>
-      <button onclick="show('admin')">📊 Muhtasari</button>
-      <button onclick="show('adminsellers')">🏪 Wauzaji</button>
-      <button onclick="show('orders')">📦 Oda</button>
-      <button onclick="show('admindisputes')">⚠️ Migogoro</button>
-      <button onclick="logout()">Toka</button>
-    </aside>
-    <div class="content">
-      <h1>Admin Control Tower</h1>
-      <div class="stats">${[['Watumiaji', s.stats.users], ['Wanunuzi', s.stats.buyers], ['Wauzaji', s.stats.sellers], ['Bidhaa', s.stats.products], ['Oda', s.stats.orders], ['GMV', money(s.stats.gmv)], ['Migogoro', s.stats.disputes], ['Uhakiki', s.stats.verifications]].map(x => `<div class="stat">${x[0]}<b>${x[1]}</b></div>`).join('')}</div>
-      <div class="panel">
-        <h2>Mega Mart Admin</h2>
-        <p>Hii ni Control Tower ya kusimamia marketplace.</p>
+      <div class="feature">
+        <div class="feature-icon">🏪</div>
+        <h3>Wauzaji Mbalimbali</h3>
+        <p>
+          Gundua bidhaa kutoka kwa wauzaji mbalimbali
+          ndani ya jukwaa moja.
+        </p>
       </div>
     </div>
-  </section>`;
-}
+  </section>
 
-// FIX: sasa inarudisha HTML badala ya innerHTML moja kwa moja.
-async function adminSellers() {
-  let d = await api('/admin/sellers');
-  return `<section class="section">
-    <h1>Wauzaji</h1>
-    <table>
-      <tr><th>Duka</th><th>Muuzaji</th><th>Hali</th><th>Kitendo</th></tr>
-      ${(d.sellers || []).map(s => `<tr><td>${esc(s.store_name || '-')}</td><td>${esc(s.name)}</td><td>${s.verified ? '✓ Verified' : 'Inasubiri'}</td><td>${s.verified ? '—' : `<button onclick="approve(${s.id})">Thibitisha</button>`}</td></tr>`).join('')}
-    </table>
-  </section>`;
-}
+  <section class="section">
+    <div class="section-title">
+      <h2>Makundi ya Bidhaa</h2>
+      <p>Chagua kundi unalotaka kuangalia.</p>
+    </div>
 
-async function approve(id) {
-  try {
-    await api('/admin/sellers/' + id + '/verify', { method: 'POST' });
-    toast('Muuzaji amethibitishwa');
-    show('adminsellers');
-  } catch (e) {
-    toast(e.message);
-  }
-}
+    <div class="categories">
+      <div class="category" onclick="show('shop')">
+        <span>📱</span>
+        Simu & Electronics
+      </div>
 
-// FIX: sasa inarudisha HTML badala ya innerHTML moja kwa moja.
-async function adminDisputes() {
-  let d = await api('/admin/disputes');
-  return `<section class="section">
-    <h1>Migogoro</h1>
-    ${(d.disputes || []).map(x => `<div class="panel"><b>Oda #${x.order_id}</b><p>${esc(x.reason)}</p><span class="badge">${x.status}</span></div>`).join('') || '<div class="empty">Hakuna migogoro.</div>'}
-  </section>`;
-}
+      <div class="category" onclick="show('shop')">
+        <span>👕</span>
+        Fashion
+      </div>
 
-function seller() {
-  return `<section class="hero">
+      <div class="category" onclick="show('shop')">
+        <span>🏠</span>
+        Nyumbani
+      </div>
+
+      <div class="category" onclick="show('shop')">
+        <span>⚽</span>
+        Michezo
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="cta">
+      <h2>Una bidhaa ya kuuza?</h2>
+      <p>
+        Jiunge na MEGAMART na anza kufikia wanunuzi zaidi.
+      </p>
+      <button class="primary-btn" onclick="show('seller')">
+        🏪 Anza Kuuza
+      </button>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="footer-grid">
     <div>
-      <h1>Geuza biashara yako kuwa duka la kidigitali.</h1>
-      <p>Fungua Mega Mart Store, ongeza bidhaa, pokea oda na simamia mauzo yako.</p>
-      <button class="primary" onclick="show('register')">Jisajili kama Muuzaji</button>
+      <h3>MEGAMART</h3>
+      <p>
+        Soko lako. Chaguo lako. Jukwaa la biashara
+        linalowaunganisha wanunuzi na wauzaji.
+      </p>
     </div>
-    <div style="font-size:110px">🏪</div>
-  </section>`;
-}
 
-async function searchProducts() {
-  const s = document.getElementById('search');
-  if (s) document.getElementById('app').innerHTML = await shop(s.value);
-}
+    <div>
+      <h3>Huduma</h3>
+      <ul>
+        <li>Nunua</li>
+        <li>Uza kwenye Megamart</li>
+        <li>Msaada</li>
+      </ul>
+    </div>
 
-async function shopCat(c) {
-  document.getElementById('app').innerHTML = await shop('', c);
-}
+    <div>
+      <h3>Nchi</h3>
+      <p>🇹🇿 Tanzania</p>
+    </div>
+  </div>
 
-async function show(page) {
-  try {
-    let html = '';
-    if (page === 'home') html = await home();
-    else if (page === 'shop') html = await shop();
-    else if (page === 'cart') html = await cartPage();
-    else if (page === 'login') html = loginPage();
-    else if (page === 'register') html = registerPage();
-    else if (page === 'seller') html = seller();
-    else if (page === 'orders') html = await orders();
-    else if (page === 'account') html = account();
-    else if (page === 'sellerdash') html = await sellerDash();
-    else if (page === 'sellerproducts') html = await sellerProducts();
-    else if (page === 'verify') html = verifyPage();
-    else if (page === 'admin') html = await admin();
-    else if (page === 'adminsellers') html = await adminSellers();
-    else if (page === 'admindisputes') html = await adminDisputes();
-    else html = '<div class="empty">Ukurasa haujapatikana.</div>';
+  <div class="copyright">
+    © 2026 MEGAMART Marketplace. Haki zote zimehifadhiwa.
+  </div>
+</footer>
 
-    const appEl = document.getElementById('app');
-    if (appEl && html) appEl.innerHTML = html;
-  } catch (e) {
-    toast(e.message);
-  }
-  save();
-}
+<script src="app.js"></script>
 
-// FIX: usawazishaji kati ya tabs — login/logout kwenye tab moja sasa
-// inaonekana kwenye tabs nyingine za website hiyo hiyo.
-window.addEventListener('storage', (e) => {
-  if (e.key === 'megamart_token' || e.key === 'megamart_user') {
-    token = localStorage.getItem('megamart_token') || '';
-    me = JSON.parse(localStorage.getItem('megamart_user') || 'null');
-    show('home');
-  }
-});
-
-// Hakikisha ukurasa unapakia kwanza kabla ya kuanzisha JS
-window.addEventListener('DOMContentLoaded', () => {
-  show('home');
-  save();
-});
+</body>
+</html>
